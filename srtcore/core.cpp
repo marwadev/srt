@@ -2182,6 +2182,12 @@ bool CUDT::interpretSrtHandshake(const CHandShake& hs, const CPacket& hspkt, uin
     if ( hs.m_iVersion < HS_VERSION_SRT1 )
         return true; // do nothing
 
+    if ( hs.m_iReqType != URQ_CONCLUSION )
+    {
+        LOGC(mglog.Warn, log << "UNEXPECTED: interpretSrtHandshake called on handshake type " << RequestTypeStr(hs.m_iReqType) << " -- extensions ignored");
+        return true;
+    }
+
     // Anyway, check if the handshake contains any extra data.
     if ( hspkt.getLength() <= CHandShake::m_iContentSize )
     {
@@ -2942,7 +2948,9 @@ EConnectStatus CUDT::processRendezvous(ref_t<CPacket> reqpkt, const CPacket& res
     // 2. The agent is loser in initiated state, it interprets incoming HSREQ and creates HSRSP
     // 3. The agent is winner in attention or fine state, it sends HSREQ extension
     m_ConnReq.m_iReqType = rsp_type;
-    m_ConnReq.m_extension = needs_extension;
+    // Require extensions only if the response type is CONCLUSION,
+    // not when AGREEMENT.
+    m_ConnReq.m_extension = needs_extension && rsp_type == URQ_CONCLUSION;
 
     if (rsp_type > URQ_FAILURE_TYPES)
     {
