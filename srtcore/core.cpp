@@ -1490,7 +1490,7 @@ bool CUDT::createSrtHandshake(ref_t<CPacket> r_pkt, ref_t<CHandShake> r_hs,
 
     // values > URQ_CONCLUSION include also error types
     // if (hs.m_iVersion == HS_VERSION_UDT4 || hs.m_iReqType > URQ_CONCLUSION) <--- This condition was checked b4 and it's only valid for caller-listener mode
-    if (!hs.m_extension)
+    if (!hs.m_extension || hs.m_iReqType != URQ_CONCLUSION)
     {
         // Serialize only the basic handshake, if this is predicted for
         // Hsv4 peer or this is URQ_INDUCTION or URQ_WAVEAHAND.
