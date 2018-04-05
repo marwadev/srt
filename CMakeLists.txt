@@ -1,20 +1,12 @@
 #
 # SRT - Secure, Reliable, Transport
-# Copyright (c) 2017 Haivision Systems Inc.
+# Copyright (c) 2018 Haivision Systems Inc.
 #
-# This library is free software; you can redistribute it and/or
-# modify it under the terms of the GNU Lesser General Public
-# License as published by the Free Software Foundation; either
-# version 2.1 of the License, or (at your option) any later version.
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
 #
-# This library is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-# Lesser General Public License for more details.
-#
-# You should have received a copy of the GNU Lesser General Public
-# License along with this library; If not, see <http://www.gnu.org/licenses/>
-#
+
 cmake_minimum_required (VERSION 2.8.12 FATAL_ERROR)
 # XXX This can be potentially done in future, but there still exist
 # some dependent project using cmake 2.8 - this can't be done this way.
@@ -315,10 +307,12 @@ if (${ENABLE_PROFILE} AND HAVE_COMPILER_GNU_COMPAT)
 	link_libraries(-g -pg)
 endif()
 
-
 if (MINGW)
 	set (PTHREAD_LIBRARY -lpthreadGC2)
-else()
+elseif (PTHREAD_LIBRARY AND PTHREAD_INCLUDE_DIR)
+	message(STATUS "Pthread library: ${PTHREAD_LIBRARY}")
+	message(STATUS "Pthread include dir: ${PTHREAD_INCLUDE_DIR}")
+elseif (WIN32)
 	# find pthread
 	find_path(PTHREAD_INCLUDE_DIR pthread.h HINTS C:/pthread-win32/include)
 	if (PTHREAD_INCLUDE_DIR)
@@ -331,15 +325,13 @@ else()
 	if (PTHREAD_LIBRARY)
 		message(STATUS "Pthread library: ${PTHREAD_LIBRARY}")
 	else()
-		if (NOT "${CMAKE_PREFIX_PATH}" STREQUAL "")
-			message(STATUS "WARNING: cross-compiler pthread not found - fallback to POSIX default")
-			set (PTHREAD_LIBRARY -pthread)
-			set (PTHREAD_INCLUDE_DIR "")
-		else()
-			message(FATAL_ERROR "Failed to find pthread library. Specify PTHREAD_LIBRARY.")
-		endif()
+		message(FATAL_ERROR "Failed to find pthread library. Specify PTHREAD_LIBRARY.")
 	endif()
-endif() # if (NOT MINGW)
+else ()
+	set(THREADS_PREFER_PTHREAD_FLAG ON)
+	find_package(Threads REQUIRED)
+	set(PTHREAD_LIBRARY ${CMAKE_THREAD_LIBS_INIT})
+endif()
 
 # This is required in some projects that add some other sources
 # to the SRT library to be compiled together (aka "virtual library").
@@ -503,13 +495,6 @@ endforeach()
 
 set (SRT_LIBS_PRIVATE ${SRT_LIBS_PRIVATE} ${PTHREAD_LIBRARY})
 
-if ( LINUX )
-	# Unsure why libdl was required, keeping for the time being.
-	#target_link_libraries(${TARGET_srt} PUBLIC dl)
-	set (IFNEEDED_SRT_LDFLAGS -pthread)
-endif()
-
-
 target_compile_definitions(srt_virtual PRIVATE -DSRT_EXPORTS )
 target_compile_definitions(haicrypt_virtual PUBLIC -DHAICRYPT_DYNAMIC)
 if (ENABLE_SHARED)
@@ -567,7 +552,7 @@ endif()
 # Some sensible solution for that is desired. Currently turned on only on demand.
 if (ENABLE_C_DEPS)
 if ( LINUX )
-	set (IFNEEDED_SRT_LDFLAGS "${IFNEEDED_SRT_LDFLAGS} -lstdc++ -lm")
+	set (IFNEEDED_SRT_LDFLAGS "-lstdc++ -lm")
 endif()
 endif()
 
