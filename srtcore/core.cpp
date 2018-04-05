@@ -3033,7 +3033,7 @@ EConnectStatus CUDT::processRendezvous(ref_t<CPacket> reqpkt, const CPacket& res
 
         // No matter the value of needs_extension, the extension is always needed
         // when HSREQ was interpreted (to store HSRSP extension).
-        m_ConnReq.m_extension = true;
+        m_ConnReq.m_extension = (rsp_type == URQ_CONCLUSION);
 
         HLOGC(mglog.Debug, log << "processConnectResponse: HSREQ extension ok, creating HSRSP response. kmdatasize=" << kmdatasize);
 
