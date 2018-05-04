@@ -1746,10 +1746,10 @@ bool CUDT::createSrtHandshake(ref_t<CPacket> r_pkt, ref_t<CHandShake> r_hs,
             for (size_t ki = 0; ki < 2; ++ki)
             {
                 // Skip those that have expired
-                if ( !m_pCryptoControl->getKmMsg_needSend(ki) )
+                if ( !m_pCryptoControl->getKmMsg_needSend(ki, false) )
                     continue;
 
-                m_pCryptoControl->getKmMsg_markSent(ki);
+                m_pCryptoControl->getKmMsg_markSent(ki, false);
 
                 offset += ra_size;
 
@@ -2875,7 +2875,12 @@ void CUDT::startConnect(const sockaddr* serv_addr, int32_t forced_isn)
             //
             // Now that this is fixed, the handshake messages from RendezvousQueue
             // are sent only when there is a rendezvous mode or non-blocking mode.
-            createSrtHandshake(Ref(reqpkt), Ref(m_ConnReq), SRT_CMD_HSREQ, SRT_CMD_KMREQ, 0, 0);
+            if ( !createSrtHandshake(Ref(reqpkt), Ref(m_ConnReq), SRT_CMD_HSREQ, SRT_CMD_KMREQ, 0, 0))
+            {
+                LOGC(mglog.Error, log << "createSrtHandshake failed - REJECTING.");
+                cst = CONN_REJECT;
+                break;
+            }
             // These last 2 parameters designate the buffer, which is in use only for SRT_CMD_KMRSP.
             // If m_ConnReq.m_iVersion == HS_VERSION_UDT4, this function will do nothing,
             // except just serializing the UDT handshake.
@@ -3121,7 +3126,7 @@ EConnectStatus CUDT::processRendezvous(ref_t<CPacket> reqpkt, const CPacket& res
     // Case 2.
     if ( needs_hsrsp )
     {
-        HLOGC(mglog.Debug, log << "startConnect: REQ-TIME: LOW. Respond immediately.");
+        HLOGC(mglog.Debug, log << "processRendezvous: setting REQ-TIME: LOW. Forced to respond immediately.");
         m_llLastReqTime = 0;
         // This means that we have received HSREQ extension with the handshake, so we need to interpret
         // it and craft the response.
@@ -3233,7 +3238,11 @@ EConnectStatus CUDT::processRendezvous(ref_t<CPacket> reqpkt, const CPacket& res
     // needs_extension here distinguishes between cases 1 and 3.
     // NOTE: in case when interpretSrtHandshake was run under the conditions above (to interpret HSRSP),
     // then createSrtHandshake below will create only empty AGREEMENT message.
-    createSrtHandshake(reqpkt, Ref(m_ConnReq), SRT_CMD_HSREQ, SRT_CMD_KMREQ, 0, 0);
+    if ( !createSrtHandshake(reqpkt, Ref(m_ConnReq), SRT_CMD_HSREQ, SRT_CMD_KMREQ, 0, 0))
+    {
+        LOGC(mglog.Error, log << "createSrtHandshake failed (IPE?), connection rejected");
+        return CONN_REJECT;
+    }
 
     if ( rsp_type == URQ_AGREEMENT && m_RdvState == CHandShake::RDV_CONNECTED )
     {
@@ -3261,7 +3270,7 @@ EConnectStatus CUDT::processRendezvous(ref_t<CPacket> reqpkt, const CPacket& res
     }
 
     // the request time must be updated so that the next handshake can be sent out immediately.
-    HLOGC(mglog.Debug, log << "startConnect: REQ-TIME: LOW. Respond immediately.");
+    HLOGC(mglog.Debug, log << "processRendezvous: REQ-TIME: set LOW to force to respond immediately.");
     m_llLastReqTime = 0;
     HLOGC(mglog.Debug, log << "processRendezvous: rsp=" << RequestTypeStr(m_ConnReq.m_iReqType) << " SENDING response, but consider yourself conencted");
     return CONN_CONTINUE;

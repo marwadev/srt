@@ -866,15 +866,17 @@ CUDT* CRendezvousQueue::retrieve(const sockaddr* addr, ref_t<SRTSOCKET> r_id)
    return NULL;
 }
 
-void CRendezvousQueue::updateConnStatus(EConnectStatus cst, const CPacket& response)
+bool CRendezvousQueue::updateConnStatus(EConnectStatus cst, const CPacket& response)
 {
    CGuard vg(m_RIDVectorLock);
 
    if (m_lRendezvousID.empty())
-      return;
+      return true;
 
    int debug_nupd = 0;
    int debug_nrun = 0;
+
+   bool status = true;
 
    HLOGC(mglog.Debug, log << "updateConnStatus: updating after getting pkt id=" << response.m_iID << " status: " << ConnectStatusStr(cst));
 
@@ -898,15 +900,14 @@ void CRendezvousQueue::updateConnStatus(EConnectStatus cst, const CPacket& respo
       {
           // If no packet has been received from the peer,
           // avoid sending too many requests, at most 1 request per 250ms
+          nowstime = (now - then) > 250000;
           HLOGC(mglog.Debug, log << "RID:%" << i->m_iID << " then=" << then << " now=" << now << " passed=" << (now-then)
                   <<  "<=> 250000 -- now's " << (nowstime ? "" : "NOT ") << "the time");
-          nowstime = (now - then) > 250000;
       }
       else
       {
           HLOGC(mglog.Debug, log << "RID:%" << i->m_iID << " cst=" << ConnectStatusStr(cst) << " -- sending update NOW.");
       }
-
 
        ++debug_nrun;
       if (nowstime)
@@ -959,26 +960,36 @@ void CRendezvousQueue::updateConnStatus(EConnectStatus cst, const CPacket& respo
              // In the below call, only the underlying `processRendezvous` function will be attempting
              // to interpret these data (for caller-listener this was already done by `processConnectRequest`
              // before calling this function), and it checks for the data presence.
-             if (i->m_pUDT->processAsyncConnectRequest(cst, response, i->m_pPeerAddr))
+             if (!i->m_pUDT->processAsyncConnectRequest(cst, response, i->m_pPeerAddr))
              {
-                 // This has been processed and most likely removed.
-                 i = i_next;
-                 continue;
+                 LOGC(mglog.Error, log << "processAsyncConnectRequest failed - updateConnStatus to return FAILURE");
+
+                 // This code is kinda mysterious; there should be probably only ONE connector,
+                 // as this whole action happens in the accepted socket that is spawned out of listener
+                 // socket when the conclusion message from the caller is received, and for the
+                 // rendezvous socket when only one connector is expected anyway. Not sure why there
+                 // was a container of connectors in the UDT code, so just propagate false when this
+                 // was returned.
+                 // XXX Not sure how this code will behave when there's some rogue rendezvous connector
+                 // trying to connect, but the rendezvous socket should reject from upside every UDP packet
+                 // coming from a host to which it is not bound.
+                 status = false;
              }
+
+             // This might have removed this node, so don't allow the incrementation to happen.
+             i = i_next;
+             continue;
          }
-         /*
-            This debug log is blocked because it is sent multiple times in a millisecond without a good reason.
-         else
-         {
-             HLOGC(mglog.Debug, log << "updateConnStatus: RendezvousQueue not to send CONCLUSION for the non-rdv sokket.");
-         }
-         // */
       }
 
       i++;
    }
 
-   HLOGC(mglog.Debug, log << "updateConnStatus: total of " << debug_nupd << " sockets updated, the loop ran " << (debug_nrun-debug_nupd) << " uselessly.");
+   HLOGC(mglog.Debug,
+           log << "updateConnStatus: total of " << debug_nupd << " sockets updated, the loop ran "
+           << (debug_nrun-debug_nupd) << " times uselessly and " << (status ? "SUCCEEDED" : "FAILED")
+        );
+   return status;
 }
 
 //
@@ -1070,6 +1081,7 @@ void* CRcvQueue::worker(void* param)
    while (!self->m_bClosing)
    {
        bool have_received = false;
+       bool have_updated_rendezvous = false;
        EReadStatus rst = self->worker_RetrieveUnit(Ref(id), Ref(unit), &sa);
        if (rst == RST_OK)
        {
@@ -1138,6 +1150,8 @@ void* CRcvQueue::worker(void* param)
            {
                u->checkTimers();
                self->m_pRcvUList->update(u);
+               if (u->socketID() == id && u->m_bRendezvous)
+                   have_updated_rendezvous = true;
            }
            else
            {
@@ -1162,7 +1176,11 @@ void* CRcvQueue::worker(void* param)
        // worker_TryAsyncRend_OrStore --->
        // CUDT::processAsyncConnectResponse --->
        // CUDT::processConnectResponse 
-       self->m_pRendezvousQueue->updateConnStatus(cst, unit->m_Packet);
+       if (!self->m_pRendezvousQueue->updateConnStatus(cst, unit->m_Packet) && have_updated_rendezvous)
+       {
+           cst = CONN_REJECT;
+           break;
+       }
    }
 
    THREAD_EXIT();
