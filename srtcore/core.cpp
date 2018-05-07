@@ -2979,6 +2979,8 @@ bool CUDT::processAsyncConnectRequest(EConnectStatus cst, const CPacket& respons
     // ID = 0, connection request
     request.m_iID = !m_bRendezvous ? 0 : m_ConnRes.m_iID;
 
+    bool status = true;
+
     if ( cst == CONN_RENDEZVOUS )
     {
         HLOGC(mglog.Debug, log << "processAsyncConnectRequest: passing to processRendezvous");
@@ -2992,7 +2994,7 @@ bool CUDT::processAsyncConnectRequest(EConnectStatus cst, const CPacket& respons
         if (cst != CONN_CONTINUE)
         {
             LOGC(mglog.Error, log << "processAsyncConnectRequest: REJECT reported from processRendezvous, not processing further.");
-            return false;
+            status = false;
         }
     }
     else
@@ -3001,16 +3003,31 @@ bool CUDT::processAsyncConnectRequest(EConnectStatus cst, const CPacket& respons
         HLOGC(mglog.Debug, log << "processAsyncConnectRequest: serializing HS: buffer size=" << request.getLength());
         if (!createSrtHandshake(Ref(request), Ref(m_ConnReq), SRT_CMD_HSREQ, SRT_CMD_KMREQ, 0, 0))
         {
+            // All 'false' returns from here are IPE-type, mostly "invalid argument" plus "all keys expired".
             LOGC(mglog.Error, log << "IPE: processAsyncConnectRequest: createSrtHandshake failed, dismissing.");
-            return false;
+            status = false;
         }
-        HLOGC(mglog.Debug, log << "processAsyncConnectRequest: sending HS reqtype=" << RequestTypeStr(m_ConnReq.m_iReqType)
-            << " to socket " << request.m_iID << " size=" << request.getLength());
+        else
+        {
+            HLOGC(mglog.Debug, log << "processAsyncConnectRequest: sending HS reqtype=" << RequestTypeStr(m_ConnReq.m_iReqType)
+                    << " to socket " << request.m_iID << " size=" << request.getLength());
+        }
+    }
+
+    if (!status)
+    {
+        return false;
+        /* XXX Shouldn't it send a single response packet for the rejection?
+        // Set the version to 0 as "handshake rejection" status and serialize it 
+        CHandShake zhs;
+        size_t size = request.getLength();
+        zhs.store_to(request.m_pcData, Ref(size));
+        request.setLength(size);
+        */
     }
 
     m_pSndQueue->sendto(serv_addr, request);
-
-    return true; // CORRECTLY HANDLED, REMOVE CONNECTOR.
+    return status;
 }
 
 void CUDT::cookieContest()
