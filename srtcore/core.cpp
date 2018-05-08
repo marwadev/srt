@@ -4246,7 +4246,18 @@ void CUDT::acceptAndRespond(const sockaddr* peer, CHandShake* hs, const CPacket&
    HLOGC(mglog.Debug, log << "acceptAndRespond: PAYLOAD SIZE: " << m_iMaxSRTPayloadSize);
 
    // Prepare all structures
-   prepareConnectionObjects(*hs, HSD_DRAW, 0);
+   if (!prepareConnectionObjects(*hs, HSD_DRAW, 0))
+   {
+       HLOGC(mglog.Debug, log << "acceptAndRespond: prepareConnectionObjects failed - responding with REJECT.");
+       // If the SRT Handshake extension was provided and wasn't interpreted
+       // correctly, the connection should be rejected.
+       //
+       // Respond with the rejection message and return false from
+       // this function so that the caller will know that this new
+       // socket should be deleted.
+       hs->m_iReqType = URQ_ERROR_REJECT;
+       throw CUDTException(MJ_SETUP, MN_REJECTED, 0);
+   }
    // Since now you can use m_pCryptoControl
 
    CInfoBlock ib;
