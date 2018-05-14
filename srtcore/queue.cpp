@@ -1404,7 +1404,35 @@ EConnectStatus CRcvQueue::worker_TryAsyncRend_OrStore(int32_t id, CUnit* unit, c
         // will land directly in the queue), but this data packet shall still be delivered.
         if (cst == CONN_ACCEPT && !unit->m_Packet.isControl())
         {
-            storePkt(id, unit->m_Packet.clone());
+            // This **should** now always return a non-null value, but check it first
+            // because if this accidentally isn't true, the call to worker_ProcessAddressedPacket will
+            // result in redirecting it to here and so on until the call stack overflow. In case of
+            // this "accident" simply disregard the packet from any further processing, it will be later
+            // loss-recovered.
+            // XXX (Probably the old contents of UDT's CRcvQueue::worker should be shaped a little bit
+            // differently throughout the functions).
+            CUDT* u = m_pHash->lookup(id);
+            if (u)
+            {
+                // The current situation is that this has passed processAsyncConnectResponse, but actually
+                // this packet *SHOULD HAVE BEEN* handled by worker_ProcessAddressedPacket, however the
+                // connection state wasn't completed at the moment when dispatching this packet. This has
+                // been now completed inside the call to processAsyncConnectResponse, but this is still a
+                // data packet that should have expected the connection to be already established. Therefore
+                // redirect it once again into worker_ProcessAddressedPacket here.
+
+                HLOGC(mglog.Debug, log << "AsyncOrRND: packet SWITCHED TO CONNECTED with ID=" << id
+                        << " -- passing to worker_ProcessAddressedPacket");
+                cst = worker_ProcessAddressedPacket(id, unit, addr);
+                if (cst == CONN_REJECT)
+                    return cst;
+                return CONN_ACCEPT; // this function usually will return CONN_CONTINUE, which doesn't represent current situation.
+            }
+            else
+            {
+                LOGC(mglog.Error, log << "IPE: AsyncOrRND: packet SWITCHED TO CONNECTED, but ID=" << id
+                        << " is still not present in the socket ID dispatch hash - DISREGARDING");
+            }
         }
         return cst;
     }
