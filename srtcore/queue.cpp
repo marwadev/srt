@@ -1397,7 +1397,16 @@ EConnectStatus CRcvQueue::worker_TryAsyncRend_OrStore(int32_t id, CUnit* unit, c
         // appropriate mutex lock - which can't be done here because it's intentionally private.
         // OTOH it can't be applied to processConnectResponse because the synchronous
         // call to this method applies the lock by itself, and same-thread-double-locking is nonportable (crashable).
-        return u->processAsyncConnectResponse(unit->m_Packet);
+        EConnectStatus cst = u->processAsyncConnectResponse(unit->m_Packet);
+
+        // It might be that this is a data packet, which has turned the connection
+        // into "connected" state, removed the connector (so since now every next packet
+        // will land directly in the queue), but this data packet shall still be delivered.
+        if (cst == CONN_ACCEPT && !unit->m_Packet.isControl())
+        {
+            storePkt(id, unit->m_Packet.clone());
+        }
+        return cst;
     }
     HLOGC(mglog.Debug, log << "AsyncOrRND: packet RESOLVED TO ID=" << id << " -- continuing through CENTRAL PACKET QUEUE");
     // This is where also the packets for rendezvous connection will be landing,
