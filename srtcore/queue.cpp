@@ -1439,6 +1439,9 @@ EConnectStatus CRcvQueue::worker_TryAsyncRend_OrStore(int32_t id, CUnit* unit, c
 
                 HLOGC(mglog.Debug, log << "AsyncOrRND: packet SWITCHED TO CONNECTED with ID=" << id
                         << " -- passing to worker_ProcessAddressedPacket");
+
+                // Theoretically we should check if m_pHash->lookup(ne->m_SocketID) returns 'ne', but this
+                // has been just added to m_pHash, so the check would be extremely paranoid here.
                 cst = worker_ProcessAddressedPacket(id, unit, addr);
                 if (cst == CONN_REJECT)
                     return cst;
