@@ -1406,6 +1406,17 @@ EConnectStatus CRcvQueue::worker_TryAsyncRend_OrStore(int32_t id, CUnit* unit, c
         // will land directly in the queue), but this data packet shall still be delivered.
         if (cst == CONN_ACCEPT && !unit->m_Packet.isControl())
         {
+            // The process as called through processAsyncConnectResponse() should have put the
+            // socket into the pending queue for pending connection (don't ask me, this is so).
+            // This pending queue is being purged every time in the beginning of this loop, so
+            // currently the socket is in the pending queue, but not yet in the connection queue.
+            // It will be done at the next iteration of the reading loop, but it will be too late,
+            // we have a pending data packet now and we must either dispatch it to an already connected
+            // socket or disregard it, and rather prefer the former. So do this transformation now
+            // that we KNOW (by the cst == CONN_ACCEPT result) that the socket should be inserted
+            // into the pending anteroom.
+
+            CUDT* ne = getNewEntry(); // This function actuall removes the entry and returns it.
             // This **should** now always return a non-null value, but check it first
             // because if this accidentally isn't true, the call to worker_ProcessAddressedPacket will
             // result in redirecting it to here and so on until the call stack overflow. In case of
@@ -1413,9 +1424,12 @@ EConnectStatus CRcvQueue::worker_TryAsyncRend_OrStore(int32_t id, CUnit* unit, c
             // loss-recovered.
             // XXX (Probably the old contents of UDT's CRcvQueue::worker should be shaped a little bit
             // differently throughout the functions).
-            CUDT* u = m_pHash->lookup(id);
-            if (u)
+            if (ne)
             {
+                HLOGC(mglog.Debug, log << CUDTUnited::CONID(ne->m_SocketID) << " SOCKET pending for connection - ADDING TO RCV QUEUE/MAP");
+                m_pRcvUList->insert(ne);
+                m_pHash->insert(ne->m_SocketID, ne);
+
                 // The current situation is that this has passed processAsyncConnectResponse, but actually
                 // this packet *SHOULD HAVE BEEN* handled by worker_ProcessAddressedPacket, however the
                 // connection state wasn't completed at the moment when dispatching this packet. This has
