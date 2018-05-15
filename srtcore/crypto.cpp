@@ -239,13 +239,17 @@ int CCryptoControl::processSrtMsg_KMREQ(const uint32_t* srtdata, size_t bytelen,
             if (m_SndKmState == SRT_KM_S_SECURING && !m_hSndCrypto)
             {
                 m_iSndKmKeyLen = m_iRcvKmKeyLen;
-                if (HaiCrypt_Clone(m_hRcvCrypto, HAICRYPT_CRYPTO_DIR_TX, &m_hSndCrypto))
+                if (HaiCrypt_Clone(m_hRcvCrypto, HAICRYPT_CRYPTO_DIR_TX, &m_hSndCrypto) == HAICRYPT_OK)
                 {
                     LOGC(mglog.Error, log << "processSrtMsg_KMREQ: Can't create SND CRYPTO CTX - WILL NOT SEND-ENCRYPT correctly!");
                     if (hasPassphrase())
                         m_SndKmState = SRT_KM_S_BADSECRET;
                     else
                         m_SndKmState = SRT_KM_S_NOSECRET;
+                }
+                else
+                {
+                    m_SndKmState = SRT_KM_S_SECURED;
                 }
 
                 LOGC(mglog.Note, log << FormatKmMessage("processSrtMsg_KMREQ", SRT_CMD_KMREQ, bytelen)
