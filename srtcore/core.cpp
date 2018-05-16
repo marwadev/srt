@@ -3521,10 +3521,6 @@ EConnectStatus CUDT::postConnect(const CPacket& response, bool rendezvous, CUDTE
     if (m_ConnRes.m_iVersion < HS_VERSION_SRT1 )
         m_ullRcvPeerStartTime = 0; // will be set correctly in SRT HS.
 
-    // Remove from rendezvous queue (in this particular case it's
-    // actually removing the socket that undergoes asynchronous HS processing).
-    m_pRcvQueue->removeConnector(m_SocketID, synchro);
-
     // This procedure isn't being executed in rendezvous because
     // in rendezvous it's completed before calling this function.
     if ( !rendezvous )
@@ -3578,6 +3574,18 @@ EConnectStatus CUDT::postConnect(const CPacket& response, bool rendezvous, CUDTE
     // register this socket for receiving data packets
     m_pRNode->m_bOnList = true;
     m_pRcvQueue->setNewEntry(this);
+
+    // Remove from rendezvous queue (in this particular case it's
+    // actually removing the socket that undergoes asynchronous HS processing).
+    // Removing at THIS point because since when setNewEntry is called,
+    // the next iteration in the CRcvQueue::worker loop will be dispatching
+    // packets normally, as within-connection, so the "connector" won't
+    // play any role since this time.
+    // The connector, however, must stay alive until the setNewEntry is called
+    // because otherwise the packets that are coming for this socket before the
+    // connection process is complete will be rejected as "attack", instead of
+    // being enqueued for later pickup from the queue.
+    m_pRcvQueue->removeConnector(m_SocketID, synchro);
 
     // acknowledge the management module.
     s_UDTUnited.connect_complete(m_SocketID);
