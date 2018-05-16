@@ -866,7 +866,7 @@ CUDT* CRendezvousQueue::retrieve(const sockaddr* addr, ref_t<SRTSOCKET> r_id)
    return NULL;
 }
 
-void CRendezvousQueue::updateConnStatus(EConnectStatus cst, const CPacket& response)
+void CRendezvousQueue::updateConnStatus(EReadStatus rst, EConnectStatus cst, const CPacket& response)
 {
     CGuard vg(m_RIDVectorLock);
 
@@ -973,7 +973,7 @@ void CRendezvousQueue::updateConnStatus(EConnectStatus cst, const CPacket& respo
                 // In the below call, only the underlying `processRendezvous` function will be attempting
                 // to interpret these data (for caller-listener this was already done by `processConnectRequest`
                 // before calling this function), and it checks for the data presence.
-                if (!i->m_pUDT->processAsyncConnectRequest(cst, response, i->m_pPeerAddr))
+                if (!i->m_pUDT->processAsyncConnectRequest(rst, cst, response, i->m_pPeerAddr))
                 {
                     LOGC(mglog.Error, log << "RendezvousQueue: processAsyncConnectRequest FAILED. Setting TTL as EXPIRED.");
                     i->m_ullTTL = 0; // Make it expire right now, will be picked up at the next iteration
@@ -1177,7 +1177,7 @@ void* CRcvQueue::worker(void* param)
        // worker_TryAsyncRend_OrStore --->
        // CUDT::processAsyncConnectResponse --->
        // CUDT::processConnectResponse 
-       self->m_pRendezvousQueue->updateConnStatus(cst, unit->m_Packet);
+       self->m_pRendezvousQueue->updateConnStatus(rst, cst, unit->m_Packet);
 
        // XXX updateConnStatus may have removed the connector from the list,
        // however there's still m_mBuffer in CRcvQueue for that socket to care about.

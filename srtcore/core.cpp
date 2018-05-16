@@ -2833,7 +2833,7 @@ void CUDT::startConnect(const sockaddr* serv_addr, int32_t forced_isn)
                 // it means that it has done all that was required, however none of the below
                 // things has to be done (this function will do it by itself if needed).
                 // Otherwise the handshake rolling can be interrupted and considered complete.
-                cst = processRendezvous(Ref(reqpkt), response, serv_addr, true /*synchro*/, cst);
+                cst = processRendezvous(Ref(reqpkt), response, serv_addr, true /*synchro*/, RST_OK);
                 if (cst == CONN_CONTINUE)
                     continue;
                 break;
@@ -2959,7 +2959,7 @@ EConnectStatus CUDT::processAsyncConnectResponse(const CPacket& pkt) ATR_NOEXCEP
     return cst;
 }
 
-bool CUDT::processAsyncConnectRequest(EConnectStatus cst, const CPacket& response, const sockaddr* serv_addr)
+bool CUDT::processAsyncConnectRequest(EReadStatus rst, EConnectStatus cst, const CPacket& response, const sockaddr* serv_addr)
 {
     // IMPORTANT!
 
@@ -2984,7 +2984,7 @@ bool CUDT::processAsyncConnectRequest(EConnectStatus cst, const CPacket& respons
     if ( cst == CONN_RENDEZVOUS )
     {
         HLOGC(mglog.Debug, log << "processAsyncConnectRequest: passing to processRendezvous");
-        cst = processRendezvous(Ref(request), response, serv_addr, false /*asynchro*/, cst);
+        cst = processRendezvous(Ref(request), response, serv_addr, false /*asynchro*/, rst);
         if (cst == CONN_ACCEPT)
         {
             HLOGC(mglog.Debug, log << "processAsyncConnectRequest: processRendezvous completed the process and responded by itself. Done.");
@@ -3076,7 +3076,7 @@ void CUDT::cookieContest()
     m_SrtHsSide = HSD_DRAW;
 }
 
-EConnectStatus CUDT::processRendezvous(ref_t<CPacket> reqpkt, const CPacket& response, const sockaddr* serv_addr, bool synchro, EConnectStatus cst)
+EConnectStatus CUDT::processRendezvous(ref_t<CPacket> reqpkt, const CPacket& response, const sockaddr* serv_addr, bool synchro, EReadStatus rst)
 {
     if ( m_RdvState == CHandShake::RDV_CONNECTED )
     {
@@ -3170,7 +3170,7 @@ EConnectStatus CUDT::processRendezvous(ref_t<CPacket> reqpkt, const CPacket& res
             return CONN_REJECT;
         }
 
-        if (cst != CONN_AGAIN)
+        if (rst == RST_OK) // Called after received a packet
         {
             HLOGC(mglog.Debug, log << "processRendezvous: setting REQ-TIME: LOW. Forced to respond immediately.");
             m_llLastReqTime = 0;
@@ -3291,7 +3291,7 @@ EConnectStatus CUDT::processRendezvous(ref_t<CPacket> reqpkt, const CPacket& res
         return CONN_ACCEPT;
     }
 
-    if (cst != CONN_AGAIN)
+    if (rst == RST_OK)
     {
         // the request time must be updated so that the next handshake can be sent out immediately
         HLOGC(mglog.Debug, log << "processRendezvous: REQ-TIME: set LOW to force to respond immediately.");
