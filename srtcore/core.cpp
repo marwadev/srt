@@ -3165,6 +3165,19 @@ EConnectStatus CUDT::processRendezvous(ref_t<CPacket> reqpkt, const CPacket& res
             // Pass on, inform about the shortened response-waiting period.
             HLOGC(mglog.Debug, log << "processRendezvous: setting REQ-TIME: LOW. Forced to respond immediately.");
         }
+        else
+        {
+            // This is a periodic handshake update, so you need to extract the KM data from the
+            // first message, provided that it is there.
+            kmdatasize = m_pCryptoControl->getKmMsg_size(0);
+            if (kmdatasize == 0)
+            {
+                LOGC(mglog.Error, log << "processRendezvous: PERIODIC HS: NO KMREQ RECORDED.");
+                return CONN_REJECT;
+            }
+            HLOGC(mglog.Debug, log << "processRendezvous: getting KMDATA from the fore-recorded KMX from KMREQ");
+            memcpy(kmdata, m_pCryptoControl->getKmMsg_data(0), kmdatasize);
+        }
 
         // No matter the value of needs_extension, the extension is always needed
         // when HSREQ was interpreted (to store HSRSP extension).
