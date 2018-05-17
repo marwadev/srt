@@ -260,7 +260,7 @@ int CCryptoControl::processSrtMsg_KMREQ(const uint32_t* srtdata, size_t bytelen,
                 // Write the KM message into the field from which it will be next sent.
                 memcpy(m_SndKmMsg[0].Msg, kmdata, bytelen);
                 m_SndKmMsg[0].MsgLen = bytelen;
-                m_SndKmMsg[0].iPeerRetry = SRT_MAX_KMRETRY;
+                m_SndKmMsg[0].iPeerRetry = 0; // Don't start sending them upon connection :)
             }
             else
             {
