@@ -3145,15 +3145,25 @@ EConnectStatus CUDT::processRendezvous(ref_t<CPacket> reqpkt, const CPacket& res
     {
         // This means that we have received HSREQ extension with the handshake, so we need to interpret
         // it and craft the response.
-        if (response.getLength() == -1u)
+        if (rst == RST_OK)
         {
-            HLOGC(mglog.Debug, log << "processRendezvous: no INCOMING packet, NOT interpreting extension (relying on exising data)");
-        }
-        else if ( !interpretSrtHandshake(m_ConnRes, response, kmdata, &kmdatasize) )
-        {
-            HLOGC(mglog.Debug, log << "processRendezvous: rejecting due to problems in interpretSrtHandshake REQ-TIME: LOW.");
+            // We have JUST RECEIVED packet in this session (not that this is called as periodic update).
+            // Sanity check
             m_llLastReqTime = 0;
-            return CONN_REJECT;
+            if (response.getLength() == -1u)
+            {
+                LOGC(mglog.Fatal, log << "IPE: rst=RST_OK, but the packet has set -1 length - REJECTING (REQ-TIME: LOW)");
+                return CONN_REJECT;
+            }
+
+            if ( !interpretSrtHandshake(m_ConnRes, response, kmdata, &kmdatasize) )
+            {
+                HLOGC(mglog.Debug, log << "processRendezvous: rejecting due to problems in interpretSrtHandshake REQ-TIME: LOW.");
+                return CONN_REJECT;
+            }
+
+            // Pass on, inform about the shortened response-waiting period.
+            HLOGC(mglog.Debug, log << "processRendezvous: setting REQ-TIME: LOW. Forced to respond immediately.");
         }
 
         // No matter the value of needs_extension, the extension is always needed
@@ -3170,11 +3180,6 @@ EConnectStatus CUDT::processRendezvous(ref_t<CPacket> reqpkt, const CPacket& res
             return CONN_REJECT;
         }
 
-        if (rst == RST_OK) // Called after received a packet
-        {
-            HLOGC(mglog.Debug, log << "processRendezvous: setting REQ-TIME: LOW. Forced to respond immediately.");
-            m_llLastReqTime = 0;
-        }
         // This means that it has received URQ_CONCLUSION with HSREQ, agent is then in RDV_FINE
         // state, it sends here URQ_CONCLUSION with HSREQ/KMREQ extensions and it awaits URQ_AGREEMENT.
         return CONN_CONTINUE;
@@ -3189,7 +3194,7 @@ EConnectStatus CUDT::processRendezvous(ref_t<CPacket> reqpkt, const CPacket& res
         // not be done in case of rendezvous. The section in postConnect() is
         // predicted to run only in regular CALLER handling.
 
-        if (response.getLength() == -1u)
+        if (rst != RST_OK || response.getLength() == -1u)
         {
             HLOGC(mglog.Debug, log << "processRendezvous: no INCOMING packet, NOT interpreting extensions (relying on exising data)");
         }
