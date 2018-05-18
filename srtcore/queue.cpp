@@ -898,25 +898,21 @@ void CRendezvousQueue::updateConnStatus(EReadStatus rst, EConnectStatus cst, con
         uint64_t now = CTimer::getTime();
         bool nowstime = true;
 
-        /*
         // Use "slow" cyclic responding in case when
-        // - CONN_AGAIN (no packet was received for whichever socket)
+        // - RST_AGAIN (no packet was received for whichever socket)
         // - a packet was received, but not for THIS socket
-        if (cst == CONN_AGAIN || i->m_iID != response.m_iID)
+        if (rst == RST_AGAIN || i->m_iID != response.m_iID)
         {
-        */
             // If no packet has been received from the peer,
             // avoid sending too many requests, at most 1 request per 250ms
             nowstime = (now - then) > 250000;
             HLOGC(mglog.Debug, log << "RID:%" << i->m_iID << " then=" << then << " now=" << now << " passed=" << (now-then)
                     <<  "<=> 250000 -- now's " << (nowstime ? "" : "NOT ") << "the time");
-            /*
         }
         else
         {
             HLOGC(mglog.Debug, log << "RID:%" << i->m_iID << " cst=" << ConnectStatusStr(cst) << " -- sending update NOW.");
         }
-        */
 
 #if ENABLE_HEAVY_LOGGING
         ++debug_nrun;
