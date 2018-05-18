@@ -1561,6 +1561,16 @@ bool CUDT::createSrtHandshake(ref_t<CPacket> r_pkt, ref_t<CHandShake> r_hs,
     // CONCLUSION might be the FIRST MESSAGE EVER RECEIVED by a party).
     if (hs.m_iVersion > HS_VERSION_UDT4)
     {
+        // Check if there was a failure to receie HSREQ before trying to craft HSRSP.
+        // If fillSrtHandshake_HSRSP catches the condition of m_ullRcvPeerStartTime == 0,
+        // it will return size 0, which will mess up with further extension procedures;
+        // PREVENT THIS HERE.
+        if (hs.m_iReqType == URQ_CONCLUSION && srths_cmd == SRT_CMD_HSRSP && m_ullRcvPeerStartTime == 0)
+        {
+            LOGC(mglog.Error, log << "createSrtHandshake: IPE (non-fatal): Attempting to craft HSRSP without received HSREQ. BLOCKING extensions.");
+            hs.m_extension = false;
+        }
+
         // The situation when this function is called without requested extensions
         // is URQ_CONCLUSION in rendezvous mode in some of the transitions.
         // In this case for version 5 just clear the m_iType field, as it has
@@ -1582,7 +1592,6 @@ bool CUDT::createSrtHandshake(ref_t<CPacket> r_pkt, ref_t<CHandShake> r_hs,
     {
         hs.m_iType = UDT_DGRAM;
     }
-
 
     // values > URQ_CONCLUSION include also error types
     // if (hs.m_iVersion == HS_VERSION_UDT4 || hs.m_iReqType > URQ_CONCLUSION) <--- This condition was checked b4 and it's only valid for caller-listener mode
@@ -3167,16 +3176,27 @@ EConnectStatus CUDT::processRendezvous(ref_t<CPacket> reqpkt, const CPacket& res
         }
         else
         {
-            // This is a periodic handshake update, so you need to extract the KM data from the
-            // first message, provided that it is there.
-            kmdatasize = m_pCryptoControl->getKmMsg_size(0);
-            if (kmdatasize == 0)
+            // If the last CONCLUSION message didn't contain the KMX extension, there's
+            // no key recorded yet, so it can't be extracted. Mark this kmdatasize empty though.
+            int hs_flags = SrtHSRequest::SRT_HSTYPE_HSFLAGS::unwrap(m_ConnRes.m_iType);
+            if (IsSet(hs_flags, CHandShake::HS_EXT_KMREQ))
             {
-                LOGC(mglog.Error, log << "processRendezvous: PERIODIC HS: NO KMREQ RECORDED.");
-                return CONN_REJECT;
+                // This is a periodic handshake update, so you need to extract the KM data from the
+                // first message, provided that it is there.
+                kmdatasize = m_pCryptoControl->getKmMsg_size(0);
+                if (kmdatasize == 0)
+                {
+                    LOGC(mglog.Error, log << "processRendezvous: IPE: PERIODIC HS: NO KMREQ RECORDED.");
+                    return CONN_REJECT;
+                }
+                HLOGC(mglog.Debug, log << "processRendezvous: getting KM DATA from the fore-recorded KMX from KMREQ");
+                memcpy(kmdata, m_pCryptoControl->getKmMsg_data(0), kmdatasize);
             }
-            HLOGC(mglog.Debug, log << "processRendezvous: getting KMDATA from the fore-recorded KMX from KMREQ");
-            memcpy(kmdata, m_pCryptoControl->getKmMsg_data(0), kmdatasize);
+            else
+            {
+                HLOGC(mglog.Debug, log << "processRendezvous: no KMX flag - not extracting KM data for KMRSP");
+                kmdatasize = 0;
+            }
         }
 
         // No matter the value of needs_extension, the extension is always needed
@@ -3815,6 +3835,16 @@ void CUDT::rendezvousSwitchState(ref_t<UDTRequestType> rsptype, ref_t<bool> need
                 // LOSER (HSD_RESPONDER): send URQ_CONCLUSION and attach HSRSP extension, then expect URQ_AGREEMENT
                 if ( hsd == HSD_RESPONDER )
                 {
+                    // If no HSREQ attached, stay in this state.
+                    // (Although this seems completely impossible).
+                    if (hs_flags == 0)
+                    {
+                        HLOGC(mglog.Debug, log << "rendezvousSwitchState: "
+                            "{RESPONDER}[ATTENTION] awaits CONCLUSION+HSREQ, got CONCLUSION, remain in [ATTENTION]");
+                        *rsptype = URQ_CONCLUSION;
+                        *needs_extension = false; // If you received WITHOUT extensions, respond WITHOUT extensions (wait for the right message)
+                        return;
+                    }
                     m_RdvState = CHandShake::RDV_INITIATED;
                     *rsptype = URQ_CONCLUSION;
                     *needs_extension = true;
