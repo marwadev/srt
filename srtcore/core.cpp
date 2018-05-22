@@ -1803,7 +1803,7 @@ bool CUDT::createSrtHandshake(ref_t<CPacket> r_pkt, ref_t<CHandShake> r_hs,
 
             if (kmdata_wordsize == 0)
             {
-                HLOGC(mglog.Debug, log << "createSrtHandshake: Agent has PW, but Peer sent no KMREQ. Sending error KMRSP response");
+                LOGC(mglog.Error, log << "createSrtHandshake: Agent has PW, but Peer sent no KMREQ. Sending error KMRSP response");
                 ra_size = 1;
                 keydata = failure_kmrsp;
 
@@ -6886,6 +6886,7 @@ void CUDT::processCtrl(CPacket& ctrlpkt)
                  else
                  {
                      initdata.m_extension = true;
+                     HLOGC(mglog.Debug, log << "processCtrl/HS: processing ok, kmdatasize=" << kmdatasize);
                  }
              }
              else
