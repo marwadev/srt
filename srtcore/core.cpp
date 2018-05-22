@@ -3102,11 +3102,11 @@ EConnectStatus CUDT::processRendezvous(ref_t<CPacket> reqpkt, const CPacket& res
     // We know that the other side was contacted and the other side has sent
     // the handshake message - we know then both cookies. If it's a draw, it's
     // a very rare case of creating identical cookies.
-	if (m_SrtHsSide == HSD_DRAW)
-	{
+    if (m_SrtHsSide == HSD_DRAW)
+    {
         LOGC(mglog.Error, log << "COOKIE CONTEST UNRESOLVED: can't assign connection roles, please wait another minute.");
-		return CONN_REJECT;
-	}
+        return CONN_REJECT;
+    }
 
     UDTRequestType rsp_type = URQ_ERROR_INVALID; // just to track uninitialized errors
 
@@ -3229,6 +3229,7 @@ EConnectStatus CUDT::processRendezvous(ref_t<CPacket> reqpkt, const CPacket& res
 
         if (rst != RST_OK || response.getLength() == -1u)
         {
+            // Actually the -1 length would be an IPE, but it's likely that this was reported already.
             HLOGC(mglog.Debug, log << "processRendezvous: no INCOMING packet, NOT interpreting extensions (relying on exising data)");
         }
         else
@@ -3300,7 +3301,8 @@ EConnectStatus CUDT::processRendezvous(ref_t<CPacket> reqpkt, const CPacket& res
     // then createSrtHandshake below will create only empty AGREEMENT message.
     if ( !createSrtHandshake(reqpkt, Ref(m_ConnReq), SRT_CMD_HSREQ, SRT_CMD_KMREQ, 0, 0))
     {
-        LOGC(mglog.Error, log << "createSrtHandshake failed (IPE?), connection rejected");
+        LOGC(mglog.Error, log << "createSrtHandshake failed (IPE?), connection rejected. REQ-TIME: LOW");
+        m_llLastReqTime = 0;
         return CONN_REJECT;
     }
 
@@ -3332,9 +3334,9 @@ EConnectStatus CUDT::processRendezvous(ref_t<CPacket> reqpkt, const CPacket& res
     if (rst == RST_OK)
     {
         // the request time must be updated so that the next handshake can be sent out immediately
-        HLOGC(mglog.Debug, log << "processRendezvous: REQ-TIME: set LOW to force to respond immediately.");
+        HLOGC(mglog.Debug, log << "processRendezvous: rsp=" << RequestTypeStr(m_ConnReq.m_iReqType)
+                << " REQ-TIME: LOW to send immediately, consider yourself conencted");
         m_llLastReqTime = 0;
-        HLOGC(mglog.Debug, log << "processRendezvous: rsp=" << RequestTypeStr(m_ConnReq.m_iReqType) << " SENDING response, but consider yourself conencted");
     }
     else
     {
@@ -3839,7 +3841,7 @@ void CUDT::rendezvousSwitchState(ref_t<UDTRequestType> rsptype, ref_t<bool> need
                     // (Although this seems completely impossible).
                     if (hs_flags == 0)
                     {
-                        HLOGC(mglog.Debug, log << "rendezvousSwitchState: "
+                        LOGC(mglog.Warn, log << "rendezvousSwitchState: (IPE!)"
                             "{RESPONDER}[ATTENTION] awaits CONCLUSION+HSREQ, got CONCLUSION, remain in [ATTENTION]");
                         *rsptype = URQ_CONCLUSION;
                         *needs_extension = false; // If you received WITHOUT extensions, respond WITHOUT extensions (wait for the right message)
@@ -4324,9 +4326,8 @@ void CUDT::acceptAndRespond(const sockaddr* peer, CHandShake* hs, const CPacket&
        // If the SRT Handshake extension was provided and wasn't interpreted
        // correctly, the connection should be rejected.
        //
-       // Respond with the rejection message and return false from
-       // this function so that the caller will know that this new
-       // socket should be deleted.
+       // Respond with the rejection message and exit with exception
+       // so that the caller will know that this new socket should be deleted.
        hs->m_iReqType = URQ_ERROR_REJECT;
        throw CUDTException(MJ_SETUP, MN_REJECTED, 0);
    }
@@ -6896,6 +6897,8 @@ void CUDT::processCtrl(CPacket& ctrlpkt)
                          LOGC(mglog.Error, log << "processCtrl/HS: IPE???: RESPONDER should receive all its handshakes in handshake phase.");
                      }
 
+                     // The 'extension' flag will be set from this variable; set it to false
+                     // in case when the AGREEMENT response is to be sent.
                      have_hsreq = initdata.m_iReqType == URQ_CONCLUSION;
                      HLOGC(mglog.Debug, log << "processCtrl/HS: processing ok, reqtype="
                              << RequestTypeStr(initdata.m_iReqType) << " kmdatasize=" << kmdatasize);
