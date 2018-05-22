@@ -6896,7 +6896,7 @@ void CUDT::processCtrl(CPacket& ctrlpkt)
                          LOGC(mglog.Error, log << "processCtrl/HS: IPE???: RESPONDER should receive all its handshakes in handshake phase.");
                      }
 
-                     initdata.m_extension = initdata.m_iReqType == URQ_CONCLUSION;
+                     have_hsreq = initdata.m_iReqType == URQ_CONCLUSION;
                      HLOGC(mglog.Debug, log << "processCtrl/HS: processing ok, reqtype="
                              << RequestTypeStr(initdata.m_iReqType) << " kmdatasize=" << kmdatasize);
                  }
