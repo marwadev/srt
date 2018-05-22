@@ -6885,8 +6885,20 @@ void CUDT::processCtrl(CPacket& ctrlpkt)
                  }
                  else
                  {
-                     initdata.m_extension = true;
-                     HLOGC(mglog.Debug, log << "processCtrl/HS: processing ok, kmdatasize=" << kmdatasize);
+                     // Extensions are added only in case of CONCLUSION (not AGREEMENT).
+                     // Actually what is expected here is that this may either process the
+                     // belated-repeated handshake from a caller (and then it's CONCLUSION,
+                     // and should be added with HSRSP/KMRSP), or it's a belated handshake
+                     // of Rendezvous when it has already considered itself connected.
+                     // Sanity check - according to the rules, there should be no such situation
+                     if (m_bRendezvous && m_SrtHsSide == HSD_RESPONDER)
+                     {
+                         LOGC(mglog.Error, log << "processCtrl/HS: IPE???: RESPONDER should receive all its handshakes in handshake phase.");
+                     }
+
+                     initdata.m_extension = initdata.m_iReqType == URQ_CONCLUSION;
+                     HLOGC(mglog.Debug, log << "processCtrl/HS: processing ok, reqtype="
+                             << RequestTypeStr(initdata.m_iReqType) << " kmdatasize=" << kmdatasize);
                  }
              }
              else
