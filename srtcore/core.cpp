@@ -4116,7 +4116,7 @@ void* CUDT::tsbpd(void* param)
                     << " (" << seqlen << " packets) playable at " << logging::FormatTime(tsbpdtime) << " delayed "
                     << (timediff/1000) << "." << (timediff%1000) << " ms");
 #endif
-                LOGC(dlog.Debug, log << "RCV-DROPPED packet delay=" << (timediff%1000) << "ms");
+                LOGC(dlog.Debug, log << "RCV-DROPPED packet delay=" << (timediff/1000) << "ms");
 #endif
 
                 tsbpdtime = 0; //Next sent ack will unblock
