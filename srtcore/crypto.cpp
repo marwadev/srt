@@ -754,8 +754,13 @@ EncryptionStatus CCryptoControl::decrypt(ref_t<CPacket> r_packet)
         {
             m_bErrorReported = true;
             LOGC(mglog.Error, log << "SECURITY STATUS: " << KmStateStr(m_RcvKmState) << " - can't decrypt packet.");
-            return ENCS_FAILED;
         }
+        else
+        {
+            // Still print a log, but only as debug
+            HLOGC(mglog.Debug, log << "Packet still not decrypted, status=" << KmStateStr(m_RcvKmState));
+        }
+        return ENCS_FAILED;
     }
 
     int rc = HaiCrypt_Rx_Data(m_hRcvCrypto, (uint8_t *)packet.getHeader(), (uint8_t *)packet.m_pcData, packet.getLength());
