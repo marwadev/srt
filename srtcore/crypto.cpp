@@ -723,7 +723,8 @@ EncryptionStatus CCryptoControl::decrypt(ref_t<CPacket> r_packet)
             // We were unaware that the peer has set password,
             // but now here we are.
             m_RcvKmState = SRT_KM_S_SECURING;
-            LOGP(mglog.Note, "SECURITY UPDATE: Peer has surprised Agent with encryption, but KMX is pending - waiting");
+            LOGC(mglog.Note, log << "SECURITY UPDATE: Peer has surprised Agent with encryption, but KMX is pending - current packet size="
+                    << packet.getLength() << " dropped");
             return ENCS_FAILED;
         }
         else
@@ -755,11 +756,8 @@ EncryptionStatus CCryptoControl::decrypt(ref_t<CPacket> r_packet)
             m_bErrorReported = true;
             LOGC(mglog.Error, log << "SECURITY STATUS: " << KmStateStr(m_RcvKmState) << " - can't decrypt packet.");
         }
-        else
-        {
-            // Still print a log, but only as debug
-            HLOGC(mglog.Debug, log << "Packet still not decrypted, status=" << KmStateStr(m_RcvKmState));
-        }
+        HLOGC(mglog.Debug, log << "Packet still not decrypted, status=" << KmStateStr(m_RcvKmState)
+                << " - dropping size=" << packet.getLength());
         return ENCS_FAILED;
     }
 
