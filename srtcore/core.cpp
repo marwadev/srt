@@ -3035,6 +3035,8 @@ bool CUDT::processAsyncConnectRequest(EReadStatus rst, EConnectStatus cst, const
         */
     }
 
+    HLOGC(mglog.Debug, log << "processAsyncConnectRequest: sending request packet, setting REQ-TIME HIGH.");
+    m_llLastReqTime = CTimer::getTime();
     m_pSndQueue->sendto(serv_addr, request);
     return status;
 }
@@ -3183,14 +3185,24 @@ EConnectStatus CUDT::processRendezvous(ref_t<CPacket> reqpkt, const CPacket& res
             {
                 // This is a periodic handshake update, so you need to extract the KM data from the
                 // first message, provided that it is there.
-                kmdatasize = m_pCryptoControl->getKmMsg_size(0);
-                if (kmdatasize == 0)
+                size_t msgsize = m_pCryptoControl->getKmMsg_size(0);
+                if (msgsize == 0)
                 {
                     LOGC(mglog.Error, log << "processRendezvous: IPE: PERIODIC HS: NO KMREQ RECORDED.");
                     return CONN_REJECT;
                 }
-                HLOGC(mglog.Debug, log << "processRendezvous: getting KM DATA from the fore-recorded KMX from KMREQ");
-                memcpy(kmdata, m_pCryptoControl->getKmMsg_data(0), kmdatasize);
+
+                kmdatasize = msgsize/4;
+                if (msgsize > kmdatasize*4)
+                {
+                    // Sanity check
+                    LOGC(mglog.Error, log << "IPE: KMX data not aligned to 4 bytes! size=" << msgsize);
+                    memset(kmdata+(kmdatasize*4), 0, msgsize - (kmdatasize*4));
+                    ++kmdatasize;
+                }
+
+                HLOGC(mglog.Debug, log << "processRendezvous: getting KM DATA from the fore-recorded KMX from KMREQ, size=" << kmdatasize);
+                memcpy(kmdata, m_pCryptoControl->getKmMsg_data(0), msgsize);
             }
             else
             {
@@ -4476,8 +4488,14 @@ void CUDT::considerLegacySrtHandshake(uint64_t timebase)
     // Do a fast pre-check first - this simply declares that agent uses HSv5
     // and the legacy SRT Handshake is not to be done. Second check is whether
     // agent is sender (=initiator in HSv4).
-    if ( m_iSndHsRetryCnt == 0 || !m_bDataSender )
+    if ( !isTsbPd() || !m_bDataSender )
         return;
+
+    if (m_iSndHsRetryCnt <= 0)
+    {
+        HLOGC(mglog.Debug, log << "Legacy HSREQ: not needed, expire counter=" << m_iSndHsRetryCnt);
+        return;
+    }
 
     uint64_t now = CTimer::getTime();
     if (timebase != 0)
@@ -4493,18 +4511,21 @@ void CUDT::considerLegacySrtHandshake(uint64_t timebase)
          * - last sent handshake req should have been replied (RTT*1.5 elapsed); and
          * then (re-)send handshake request.
          */
-        if ( !isTsbPd() // tsbpd off = no HSREQ required
-                || m_iSndHsRetryCnt <= 0 // expired (actually sanity check, theoretically impossible to be <0)
-                || timebase > now ) // too early
+        if ( timebase > now ) // too early
+        {
+            HLOGC(mglog.Debug, log << "Legacy HSREQ: TOO EARLY, will still retry " << m_iSndHsRetryCnt << " times");
             return;
+        }
     }
     // If 0 timebase, it means that this is the initial sending with the very first
     // payload packet sent. Send only if this is still set to maximum+1 value.
     else if (m_iSndHsRetryCnt < SRT_MAX_HSRETRY+1)
     {
+        HLOGC(mglog.Debug, log << "Legacy HSREQ: INITIAL, REPEATED, so not to be done. Will repeat on sending " << m_iSndHsRetryCnt << " times");
         return;
     }
 
+    HLOGC(mglog.Debug, log << "Legacy HSREQ: SENDING, will repeat " << m_iSndHsRetryCnt << " times if no response");
     m_iSndHsRetryCnt--;
     m_ullSndHsLastTime_us = now;
     sendSrtMsg(SRT_CMD_HSREQ);
@@ -5024,11 +5045,15 @@ int CUDT::sendmsg2(const char* data, int len, ref_t<SRT_MSGCTRL> r_mctrl)
         throw CUDTException(MJ_NOTSUP, MN_XSIZE, 0);
     }
 
+    /* XXX
+       This might be worth preserving for several occasions, but it
+       must be at least conditional because it breaks backward compat.
     if (!m_pCryptoControl || !m_pCryptoControl->isSndEncryptionOK())
     {
         LOGC(dlog.Error, log << "Encryption is required, but the peer did not supply correct credentials. Sending rejected.");
         throw CUDTException(MJ_SETUP, MN_SECURITY, 0);
     }
+    */
 
     CGuard sendguard(m_SendLock);
 
