@@ -4429,6 +4429,9 @@ bool CUDT::createCrypter(HandshakeSide side, bool bidirectional)
     if ( m_pCryptoControl )
         return true;
 
+    // Write back this value, when it was just determined.
+    m_SrtHsSide = side;
+
     m_pCryptoControl.reset(new CCryptoControl(this, m_SocketID));
 
     // XXX These below are a little bit controversial.
