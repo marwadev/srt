@@ -3189,28 +3189,36 @@ EConnectStatus CUDT::processRendezvous(ref_t<CPacket> reqpkt, const CPacket& res
                 size_t msgsize = m_pCryptoControl->getKmMsg_size(0);
                 if (msgsize == 0)
                 {
-                    // This might have happened in case when Agent has no secret.
-                    // In this case the key was received, but not recorded. This is then
-                    // reflected by the NOSECRET state.
-                    if (m_pCryptoControl->m_RcvKmState == SRT_KM_S_NOSECRET)
+                    switch (m_pCryptoControl->m_RcvKmState)
                     {
-                        HLOGC(mglog.Debug, log << "processRendezvous: No KMX recorded, status = NOSECRET. Respond with NOSECRET.");
+                        // If the KMX process ended up with a failure, the KMX is not recorded.
+                        // In this case as the KMRSP answer the "failure status" should be crafted.
+                    case SRT_KM_S_NOSECRET:
+                    case SRT_KM_S_BADSECRET:
+                        {
+                            HLOGC(mglog.Debug, log << "processRendezvous: No KMX recorded, status = NOSECRET. Respond with NOSECRET.");
 
-                        // Just do the same thing as in CCryptoControl::processSrtMsg_KMREQ for that case,
-                        // that is, copy the NOSECRET code into KMX message.
-                        memcpy(kmdata, &m_pCryptoControl->m_RcvKmState, sizeof(int32_t));
-                        kmdatasize = 1;
-                    }
-                    else
-                    {
-                        // Remaining situations are:
-                        // - no password on any site: shouldn't be considered
-                        // - passwords on both sites: should be recorded, even if the password is wrong
-                        // - password only on this site: shouldn't be considered to be sent to a no-password site
-                        LOGC(mglog.Error, log << "processRendezvous: IPE: PERIODIC HS: NO KMREQ RECORDED KMSTATE: RCV="
-                                << KmStateStr(m_pCryptoControl->m_RcvKmState) << " SND="
-                                << KmStateStr(m_pCryptoControl->m_SndKmState));
-                        return CONN_REJECT;
+                            // Just do the same thing as in CCryptoControl::processSrtMsg_KMREQ for that case,
+                            // that is, copy the NOSECRET code into KMX message.
+                            memcpy(kmdata, &m_pCryptoControl->m_RcvKmState, sizeof(int32_t));
+                            kmdatasize = 1;
+                        }
+                        break;
+
+                    default:
+                        // Remaining values:
+                        // UNSECURED: should not fall here at alll
+                        // SECURING: should not happen in HSv5
+                        // SECURED: should have received the recorded KMX correctly (getKmMsg_size(0) > 0)
+                        {
+                            // Remaining situations:
+                            // - password only on this site: shouldn't be considered to be sent to a no-password site
+                            LOGC(mglog.Error, log << "processRendezvous: IPE: PERIODIC HS: NO KMREQ RECORDED KMSTATE: RCV="
+                                    << KmStateStr(m_pCryptoControl->m_RcvKmState) << " SND="
+                                    << KmStateStr(m_pCryptoControl->m_SndKmState));
+                            return CONN_REJECT;
+                        }
+                        break;
                     }
                 }
                 else
